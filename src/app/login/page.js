@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+const getAdminEmails = () =>
+  (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
+    .split(",")
+    .map((adminEmail) => adminEmail.trim().toLowerCase())
+    .filter(Boolean);
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -11,7 +17,6 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -65,11 +70,18 @@ export default function LoginPage() {
   };
 
   const getIntro = () => {
-    if (isSignup)
+    if (isSignup) {
       return "Create your account, then ask the match organiser for your private player code.";
-    if (isForgotPassword)
+    }
+
+    if (isForgotPassword) {
       return "Enter your email and we will send you a password reset link.";
-    if (isResetPassword) return "Enter a new password for your account.";
+    }
+
+    if (isResetPassword) {
+      return "Enter a new password for your account.";
+    }
+
     return "Login to vote for matches you played in.";
   };
 
@@ -82,19 +94,31 @@ export default function LoginPage() {
       if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(
           email.trim().toLowerCase(),
-          { redirectTo: `${window.location.origin}/login?mode=reset` },
+          {
+            redirectTo: `${window.location.origin}/login?mode=reset`,
+          },
         );
 
         if (error) throw error;
+
         setMessage("Check your email for the password reset link.");
-      } else if (isResetPassword) {
-        const { error } = await supabase.auth.updateUser({ password });
+        return;
+      }
+
+      if (isResetPassword) {
+        const { error } = await supabase.auth.updateUser({
+          password,
+        });
 
         if (error) throw error;
+
         setMessage("Password updated. You can now login.");
         setPassword("");
         setMode("login");
-      } else if (isSignup) {
+        return;
+      }
+
+      if (isSignup) {
         const cleanName = name.trim();
         const cleanEmail = email.trim().toLowerCase();
 
@@ -111,40 +135,64 @@ export default function LoginPage() {
 
         if (error) throw error;
 
-        // Helps save name if the session exists straight after signup
-        await supabase.auth.updateUser({
-          data: {
-            full_name: cleanName,
-          },
-        });
+        if (data.session) {
+          const { error: metadataError } = await supabase.auth.updateUser({
+            data: {
+              full_name: cleanName,
+            },
+          });
+
+          if (metadataError) throw metadataError;
+        }
 
         if (data.user) {
           setMessage(
             "Check your email, then come back to activate voting with your player code.",
           );
         }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        });
 
-        if (error) throw error;
+        return;
+      }
+
+      const loginEmail = email.trim().toLowerCase();
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password,
+      });
+
+      if (error) throw error;
+
+      const adminEmails = getAdminEmails();
+
+      if (adminEmails.includes(loginEmail)) {
+        router.push("/admin");
+      } else {
         router.push("/claim-player");
       }
+
+      router.refresh();
     } catch (error) {
       console.error(error);
 
       const msg = error?.message || "Something went wrong.";
+      const lowerMessage = msg.toLowerCase();
 
-      if (msg.toLowerCase().includes("invalid api key")) {
+      if (
+        lowerMessage.includes("rate limit") ||
+        lowerMessage.includes("email rate limit")
+      ) {
         setMessage(
-          "Supabase API key is invalid or missing. Check your .env.local and restart the dev server.",
+          "Too many email requests. Please wait a while and try again.",
+        );
+      } else if (lowerMessage.includes("invalid api key")) {
+        setMessage(
+          "Supabase API key is invalid or missing. Check your .env.local and restart the development server.",
         );
       } else if (
-        msg.toLowerCase().includes("invalid login") ||
-        msg.toLowerCase().includes("invalid credentials") ||
-        msg.toLowerCase().includes("invalid password")
+        lowerMessage.includes("invalid login") ||
+        lowerMessage.includes("invalid credentials") ||
+        lowerMessage.includes("invalid password")
       ) {
         setMessage("Invalid email or password.");
       } else {
@@ -152,6 +200,16 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setMessage("");
+    setPassword("");
+
+    if (newMode !== "signup") {
+      setName("");
     }
   };
 
@@ -166,7 +224,7 @@ export default function LoginPage() {
           <div className="mt-4 grid grid-cols-2 rounded border p-1">
             <button
               type="button"
-              onClick={() => setMode("login")}
+              onClick={() => switchMode("login")}
               className={`rounded px-3 py-2 text-sm ${
                 !isSignup ? "bg-blue-600 text-white" : "text-gray-700"
               }`}
@@ -176,7 +234,7 @@ export default function LoginPage() {
 
             <button
               type="button"
-              onClick={() => setMode("signup")}
+              onClick={() => switchMode("signup")}
               className={`rounded px-3 py-2 text-sm ${
                 isSignup ? "bg-blue-600 text-white" : "text-gray-700"
               }`}
@@ -248,10 +306,7 @@ export default function LoginPage() {
           {!isForgotPassword && !isResetPassword && (
             <button
               type="button"
-              onClick={() => {
-                setMode("forgot");
-                setMessage("");
-              }}
+              onClick={() => switchMode("forgot")}
               className="text-blue-700"
             >
               Forgot password?
@@ -261,10 +316,7 @@ export default function LoginPage() {
           {(isForgotPassword || isResetPassword) && (
             <button
               type="button"
-              onClick={() => {
-                setMode("login");
-                setMessage("");
-              }}
+              onClick={() => switchMode("login")}
               className="text-blue-700"
             >
               Back to login
