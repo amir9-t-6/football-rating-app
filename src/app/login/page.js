@@ -146,12 +146,13 @@ export default function LoginPage() {
         }
 
         if (data.user) {
-          setMessage(
-            "Check your email, then come back to activate voting with your player code.",
-          );
-        }
+          setName("");
+          setEmail("");
+          setPassword("");
 
-        return;
+          router.push("/signup-success");
+          return;
+        }
       }
 
       const loginEmail = email.trim().toLowerCase();

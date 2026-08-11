@@ -2,7 +2,7 @@ import "./globals.css";
 import Navbar from "../components/Navbar";
 
 export const metadata = {
-  title: "Rating App",
+  title: "Rate your mate",
   description: "7-a-side player rating app",
 };
 
