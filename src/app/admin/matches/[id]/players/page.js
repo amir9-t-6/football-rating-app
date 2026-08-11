@@ -20,50 +20,57 @@ export default function MatchPlayersPage() {
   useEffect(() => {
     if (!matchId) return;
 
-    fetchMatch();
-    fetchPlayers();
-    fetchExistingMatchPlayers();
+    const loadMatchData = async () => {
+      // Get match
+      const { data: matchData } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("id", matchId)
+        .single();
+
+      let loadedTeams = ["Team A", "Team B"];
+
+      if (matchData) {
+        setMatchTitle(matchData.title);
+
+        if (matchData.title?.toLowerCase().includes("vs")) {
+          loadedTeams = matchData.title.split(/vs/i).map((team) => team.trim());
+        }
+      }
+
+      // Get all players
+      const { data: playersData, error: playersError } = await supabase
+        .from("players")
+        .select("*")
+        .order("name", { ascending: true });
+
+      if (!playersError) {
+        setPlayers(playersData || []);
+      }
+
+      // Get players already assigned to this match
+      const { data: existingData, error: existingError } = await supabase
+        .from("match_players")
+        .select("*")
+        .eq("match_id", matchId);
+
+      if (existingError) return;
+
+      const existing = {};
+
+      (existingData || []).forEach((item) => {
+        existing[item.player_id] = {
+          selected: true,
+          team: item.team || loadedTeams[0],
+          role: item.role || "Midfield",
+        };
+      });
+
+      setSelectedPlayers(existing);
+    };
+
+    loadMatchData();
   }, [matchId]);
-
-  const fetchMatch = async () => {
-    const { data } = await supabase
-      .from("matches")
-      .select("*")
-      .eq("id", matchId)
-      .single();
-
-    if (data) setMatchTitle(data.title);
-  };
-
-  const fetchPlayers = async () => {
-    const { data, error } = await supabase
-      .from("players")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (!error) setPlayers(data || []);
-  };
-
-  const fetchExistingMatchPlayers = async () => {
-    const { data, error } = await supabase
-      .from("match_players")
-      .select("*")
-      .eq("match_id", matchId);
-
-    if (error) return;
-
-    const existing = {};
-
-    data.forEach((item) => {
-      existing[item.player_id] = {
-        selected: true,
-        team: item.team || teams[0],
-        role: item.role || "Midfield",
-      };
-    });
-
-    setSelectedPlayers(existing);
-  };
 
   const togglePlayer = (playerId) => {
     setSelectedPlayers((prev) => ({
@@ -100,7 +107,7 @@ export default function MatchPlayersPage() {
     }
 
     const rowsToInsert = Object.entries(selectedPlayers)
-      .filter(([_, value]) => value)
+      .filter(([, value]) => value)
       .map(([playerId, value]) => ({
         match_id: matchId,
         player_id: Number(playerId),
