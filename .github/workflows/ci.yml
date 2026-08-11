@@ -3,10 +3,9 @@ name: CI
 on:
   push:
     branches:
-      -main
+      - main
 
-
-       pull_request:
+  pull_request:
     branches:
       - main
 
@@ -31,3 +30,7 @@ jobs:
 
       - name: Build app
         run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_ADMIN_EMAILS: ${{ secrets.NEXT_PUBLIC_ADMIN_EMAILS }}
